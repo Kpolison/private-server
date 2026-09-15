@@ -7,6 +7,7 @@ export default class PrivateServerPlugin extends Plugin {
   private session: SessionState = {
     selectedPath: null,
     collapsedPaths: new Set(),
+    drafts: new Map(),
   };
 
   onload(): void {
