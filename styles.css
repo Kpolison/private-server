@@ -154,3 +154,172 @@
 .private-server-view .private-server-composer-actions { flex-wrap: wrap; }
 .private-server-view .private-server-composer-actions button { flex-shrink: 0; }
 .private-server-image-modal img { display: block; max-width: 100%; max-height: 75vh; height: auto; margin: auto; object-fit: contain; }
+
+/* Mobile is explicit; narrow desktop panes retain the existing desktop layout. */
+.private-server-view.private-server-mobile {
+  position: relative;
+  isolation: isolate;
+  min-height: 0;
+  min-width: 0;
+  height: 100%;
+  max-height: var(--private-server-mobile-height, 100%);
+  overflow: hidden;
+}
+.private-server-mobile > .private-server-server-header { display: none; }
+.private-server-mobile .private-server-layout {
+  position: relative;
+  display: flex;
+  flex: 1 1 0;
+  min-height: 0;
+  min-width: 0;
+  overflow: hidden;
+}
+.private-server-mobile .private-server-main {
+  flex: 1 1 0;
+  min-width: 0;
+  min-height: 0;
+  padding: 0;
+  overflow: hidden;
+}
+.private-server-mobile .private-server-mobile-header {
+  display: flex;
+  align-items: center;
+  flex: 0 0 auto;
+  min-height: 48px;
+  padding: 2px max(8px, env(safe-area-inset-right, 0px)) 2px max(4px, env(safe-area-inset-left, 0px));
+  gap: 4px;
+}
+.private-server-mobile .private-server-channel-header {
+  padding: 8px 4px;
+  font-size: 16px;
+  line-height: 1.3;
+  min-width: 0;
+  flex: 1;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+.private-server-mobile .private-server-drawer-menu,
+.private-server-mobile .private-server-drawer-header button {
+  width: 44px;
+  height: 44px;
+  flex: 0 0 44px;
+  padding: 0;
+  font-size: 23px;
+  border: 0;
+  box-shadow: none;
+  background: transparent;
+  color: var(--private-server-text);
+}
+.private-server-mobile .private-server-drawer-backdrop {
+  position: absolute;
+  inset: 0;
+  z-index: 2;
+  width: 100%;
+  height: 100%;
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  box-shadow: none;
+  background: rgb(0 0 0 / 55%);
+}
+.private-server-mobile .private-server-drawer-backdrop[hidden] { display: none; }
+.private-server-mobile .private-server-drawer {
+  position: absolute;
+  inset: 0 auto 0 0;
+  z-index: 3;
+  width: min(86%, 340px);
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  overflow: hidden;
+  background: var(--private-server-sidebar-bg);
+  visibility: hidden;
+  transform: translateX(-100%);
+  transition: transform 160ms ease, visibility 160ms;
+}
+.private-server-mobile.private-server-drawer-open .private-server-drawer {
+  visibility: visible;
+  transform: translateX(0);
+}
+.private-server-mobile .private-server-drawer-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-shrink: 0;
+  gap: 8px;
+  font-weight: 700;
+  padding: 6px 4px 6px max(14px, env(safe-area-inset-left, 0px));
+}
+.private-server-mobile .private-server-sidebar {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  padding: 4px 10px max(12px, env(safe-area-inset-bottom, 0px)) max(10px, env(safe-area-inset-left, 0px));
+}
+.private-server-mobile .private-server-feed {
+  flex: 1 1 0;
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior-y: contain;
+  padding: 0 max(12px, env(safe-area-inset-right, 0px)) 12px max(12px, env(safe-area-inset-left, 0px));
+}
+.private-server-mobile .private-server-feed-image { width: 100%; }
+.private-server-mobile .private-server-feed-image img { width: 100%; height: auto; max-height: none; }
+.private-server-mobile .private-server-composer {
+  flex: 0 0 auto;
+  padding: 6px max(8px, env(safe-area-inset-right, 0px)) max(6px, env(safe-area-inset-bottom, 0px)) max(8px, env(safe-area-inset-left, 0px));
+}
+.private-server-mobile .private-server-composer-row {
+  display: flex;
+  align-items: flex-end;
+  gap: 4px;
+  min-width: 0;
+}
+.private-server-mobile .private-server-composer textarea {
+  flex: 1;
+  min-width: 0;
+  width: 0;
+  min-height: 44px;
+  max-height: 112px;
+  max-height: min(112px, 22dvh);
+  padding: 10px;
+  font-size: 16px;
+  line-height: 24px;
+  resize: none;
+  overflow-y: auto;
+}
+.private-server-mobile .private-server-attach-button,
+.private-server-mobile .private-server-send-button {
+  flex: 0 0 44px;
+  min-width: 44px;
+  height: 44px;
+  padding: 0;
+  font-size: 22px;
+}
+.private-server-mobile .private-server-pending-images { gap: 8px; max-height: 76px; padding: 2px 0 6px; }
+.private-server-mobile .private-server-pending-image { position: relative; flex: 0 0 72px; padding: 0; }
+.private-server-mobile .private-server-pending-image img { width: 72px; height: 64px; object-fit: cover; }
+.private-server-mobile .private-server-pending-image button {
+  position: absolute;
+  top: -2px;
+  right: -2px;
+  width: 44px;
+  height: 44px;
+  min-height: 44px;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  box-shadow: none;
+  background: transparent;
+  color: white;
+  font-size: 24px;
+  text-shadow: 0 1px 3px black, 0 0 4px black;
+}
+.private-server-mobile .private-server-group-toggle,
+.private-server-mobile .private-server-add-channel,
+.private-server-mobile .private-server-channel { min-height: 44px; }
+@media (prefers-reduced-motion: reduce) {
+  .private-server-mobile .private-server-drawer { transition: none; }
+}

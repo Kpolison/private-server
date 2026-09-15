@@ -4,9 +4,12 @@ import { CreateChannelModal } from "./CreateChannelModal";
 import { parseChannel } from "./messages";
 import { MAX_PENDING_IMAGES, PendingImage, prepareImage, sendWithImages } from "./attachments";
 
+import { MobileLayout } from "./MobileLayout";
+
 export const PRIVATE_SERVER_VIEW = "private-server-view";
 
 export class PrivateServerView extends ItemView {
+  private mobileLayout: MobileLayout | null = null;
   private categories: Category[] = [];
   private sidebar!: HTMLElement;
   private heading!: HTMLElement;
@@ -39,7 +42,9 @@ export class PrivateServerView extends ItemView {
     const layout = this.contentEl.createDiv("private-server-layout");
     this.sidebar = layout.createEl("nav", { cls: "private-server-sidebar", attr: { "aria-label": "Channels" } });
     const main = layout.createEl("section", { cls: "private-server-main" });
-    this.heading = main.createEl("h2", { cls: "private-server-channel-header" });
+    const header = Platform.isMobile ? main.createDiv("private-server-mobile-header") : main;
+    if (Platform.isMobile) this.mobileLayout = this.addChild(new MobileLayout(this.contentEl, layout, this.sidebar, main, header));
+    this.heading = header.createEl("h2", { cls: "private-server-channel-header" });
     this.feed = main.createDiv({ cls: "private-server-feed", attr: { role: "log", "aria-label": "Messages", tabindex: "0" } });
     this.composer = main.createEl("form", { cls: "private-server-composer" });
     this.previews = this.composer.createDiv({ cls: "private-server-pending-images", attr: { "aria-label": "Pending images" } });
@@ -52,15 +57,17 @@ export class PrivateServerView extends ItemView {
       this.imagePicker.value = "";
       void this.addImages(files, this.pickerChannel);
     };
-    this.input = this.composer.createEl("textarea", { attr: { rows: "3", "aria-label": "Message" } });
-    const actions = this.composer.createDiv("private-server-composer-actions");
-    this.imageButton = actions.createEl("button", { text: "Add images", attr: { type: "button" } });
+    const row = Platform.isMobile ? this.composer.createDiv("private-server-composer-row") : this.composer;
+    this.input = row.createEl("textarea", { attr: { rows: Platform.isMobile ? "1" : "3", "aria-label": "Message" } });
+    const actions = Platform.isMobile ? row : this.composer.createDiv("private-server-composer-actions");
+    this.imageButton = actions.createEl("button", { cls: "private-server-attach-button", text: Platform.isMobile ? "+" : "Add images", attr: { type: "button", "aria-label": "Add images", title: "Add images" } });
+    if (Platform.isMobile) row.insertBefore(this.imageButton, this.input);
     this.imageButton.onclick = () => {
       this.pickerChannel = this.selectedFile;
       this.imagePicker.click();
     };
-    actions.createSpan({ cls: "private-server-hint", text: Platform.isMobile ? "PNG · JPEG · GIF · WebP" : "Enter to send · Shift+Enter for a newline" });
-    this.sendButton = actions.createEl("button", { text: "Send", attr: { type: "submit" } });
+    if (!Platform.isMobile) actions.createSpan({ cls: "private-server-hint", text: "Enter to send · Shift+Enter for a newline" });
+    this.sendButton = actions.createEl("button", { cls: "private-server-send-button", text: Platform.isMobile ? "➤" : "Send", attr: { type: "submit", "aria-label": "Send message", title: "Send message" } });
     this.composer.onsubmit = event => { event.preventDefault(); void this.send(); };
     this.input.onpaste = event => {
       const files = Array.from(event.clipboardData?.items ?? [])
@@ -104,6 +111,8 @@ export class PrivateServerView extends ItemView {
   }
 
   async onClose(): Promise<void> {
+    if (this.mobileLayout) this.removeChild(this.mobileLayout);
+    this.mobileLayout = null;
     if (this.eventScope) this.removeChild(this.eventScope);
     this.eventScope = null;
     this.readVersion++;
@@ -157,7 +166,7 @@ export class PrivateServerView extends ItemView {
           new CreateChannelModal(this.app, folder, file => {
             this.session.collapsedPaths.delete(file.parent?.path ?? group.path);
             this.session.selectedPath = file.path;
-            if (this.eventScope) this.refresh();
+            if (this.eventScope) { this.refresh(); this.mobileLayout?.close(); }
           }).open();
         });
         add.setAttribute("aria-label", `Create channel in ${group.name}`);
@@ -168,7 +177,7 @@ export class PrivateServerView extends ItemView {
           const selected = channel.path === this.session.selectedPath;
           const el = button(section, `# ${channel.name}`, `private-server-channel${selected ? " private-server-channel-selected" : ""}`, channel.path, () => {
             this.session.selectedPath = channel.path;
-            this.renderSidebar(); this.selectCurrent();
+            this.renderSidebar(); this.selectCurrent(); this.mobileLayout?.close();
           });
           el.setAttribute("aria-pressed", String(selected));
         }
@@ -197,7 +206,8 @@ export class PrivateServerView extends ItemView {
     this.input.disabled = !this.writable || this.sending;
     this.imageButton.disabled = !this.writable || this.sending || this.addingImages;
     this.sendButton.disabled = !this.writable || this.sending || this.addingImages || (!this.input.value.trim() && !this.pendingImages().length);
-    this.sendButton.setText(this.sending ? "Sending…" : "Send");
+    this.sendButton.setText(this.sending ? (Platform.isMobile ? "…" : "Sending…") : (Platform.isMobile ? "➤" : "Send"));
+    this.mobileLayout?.resizeComposer(this.input, this.feed);
   }
 
   private async loadFeed(scrollToEnd: boolean): Promise<void> {
@@ -288,7 +298,7 @@ export class PrivateServerView extends ItemView {
       this.previewUrls.push(url);
       const item = this.previews.createDiv("private-server-pending-image");
       item.createEl("img", { attr: { src: url, alt: image.name } });
-      const remove = item.createEl("button", { text: "Remove", attr: { type: "button", "aria-label": `Remove ${image.name}` } });
+      const remove = item.createEl("button", { text: Platform.isMobile ? "×" : "Remove", attr: { type: "button", "aria-label": `Remove ${image.name}`, title: `Remove ${image.name}` } });
       remove.disabled = this.sending;
       remove.onclick = () => {
         if (!this.selectedFile || this.sending) return;
@@ -343,7 +353,7 @@ export class PrivateServerView extends ItemView {
       new Notice(`Message not sent. Your draft is preserved. ${cause instanceof Error ? cause.message : "Please try again."}`);
     } finally {
       this.sending = false;
-      if (this.eventScope) { this.renderPreviews(); this.updateComposer(); if (this.selectedFile === file && this.writable) this.input.focus(); }
+      if (this.eventScope) { this.renderPreviews(); this.updateComposer(); if (!Platform.isMobile && this.selectedFile === file && this.writable) this.input.focus(); }
     }
   }
 }
