@@ -269,6 +269,9 @@
 .private-server-mobile .private-server-feed-image img { width: 100%; height: auto; max-height: none; }
 .private-server-mobile .private-server-composer {
   flex: 0 0 auto;
+  /* Floating Obsidian toolbar clearance; the viewport controller removes it
+     with the software keyboard open. Existing safe-area padding stays intact. */
+  margin-bottom: var(--private-server-toolbar-reserve, 72px);
   padding: 6px max(8px, env(safe-area-inset-right, 0px)) max(6px, env(safe-area-inset-bottom, 0px)) max(8px, env(safe-area-inset-left, 0px));
 }
 .private-server-mobile .private-server-composer-row {

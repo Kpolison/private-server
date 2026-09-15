@@ -10,6 +10,8 @@ export class MobileLayout extends Component {
   private closeButton: HTMLButtonElement;
   private opened = false;
   private frame = 0;
+  private viewportWidth = 0;
+  private expandedHeight = 0;
 
   constructor(
     private root: HTMLElement,
@@ -94,6 +96,19 @@ export class MobileLayout extends Component {
     const win = this.root.ownerDocument.defaultView;
     if (!win || !this.root.isConnected) return;
     const viewport = win.visualViewport;
+    // Track the largest viewport at this width, including WebViews that resize
+    // innerHeight alongside visualViewport. Reset on rotation/window-width changes.
+    const width = win.innerWidth;
+    if (width !== this.viewportWidth) {
+      this.viewportWidth = width;
+      this.expandedHeight = 0;
+    }
+    this.expandedHeight = Math.max(this.expandedHeight, win.innerHeight, viewport?.height ?? 0);
+    // A substantial viewport contraction indicates a software keyboard. Small
+    // toolbar changes and pinch zoom must not remove the closed-keyboard reserve.
+    const keyboardOpen = !!viewport && Math.abs((viewport.scale ?? 1) - 1) < 0.01
+      && this.expandedHeight - viewport.height > Math.max(100, this.expandedHeight * 0.18);
+    this.root.style.setProperty("--private-server-toolbar-reserve", keyboardOpen ? "0px" : "72px");
     // Obsidian may already resize the parent: max-height is only an additional cap,
     // never a second subtraction of keyboard height from an already resized layout.
     const bottom = viewport ? viewport.offsetTop + viewport.height : win.innerHeight;
@@ -137,5 +152,6 @@ export class MobileLayout extends Component {
     this.setOpen(false, false);
     this.root.removeClass("private-server-mobile", "private-server-drawer-open");
     this.root.style.removeProperty("--private-server-mobile-height");
+    this.root.style.removeProperty("--private-server-toolbar-reserve");
   }
 }

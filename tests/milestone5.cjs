@@ -11,7 +11,7 @@ class EventTargetMock {
   dispatch(type, event={}){for(const fn of this.listeners.get(type)||[])fn(event);}
 }
 const win=new EventTargetMock();
-win.innerHeight=700;
+win.innerHeight=700;win.innerWidth=390;
 win.visualViewport=Object.assign(new EventTargetMock(),{offsetTop:0,height:700});
 let frameSequence=0;
 const frames=new Map();
@@ -92,6 +92,30 @@ const find=(el,test)=>test(el)?el:el.children.map(x=>find(x,test)).find(Boolean)
   view.input.value='Draft survives navigation';view.input.oninput();
   const pending={id:'fixture',name:'Page.png',extension:'png',blob:new Blob(['fixture'])};
   view.session.pendingImages.set(first.path,[pending]);view.renderPreviews();
+  // Controller-state regression only; these supplied dimensions do not simulate iOS layout.
+  const reserve=()=>view.contentEl.style.getPropertyValue('--private-server-toolbar-reserve');
+  const flushViewport=()=>{for(const [id,fn] of [...frames]){frames.delete(id);fn();}};
+  flushViewport();assert.equal(reserve(),'72px','closed keyboard reserves floating toolbar space');
+  view.input.focus();assert.equal(reserve(),'72px','focus alone, including hardware keyboards, removes no space');
+  win.visualViewport.height=650;win.visualViewport.dispatch('resize');flushViewport();
+  assert.equal(reserve(),'72px','small viewport changes do not imply keyboard');
+  win.visualViewport.height=400;win.visualViewport.dispatch('resize');flushViewport();
+  assert.equal(reserve(),'0px','keyboard contraction removes toolbar gap');
+  assert.equal(view.contentEl.style.getPropertyValue('--private-server-mobile-height'),'400px');
+  win.innerHeight=400;win.dispatch('resize');flushViewport();
+  assert.equal(reserve(),'0px','retains expanded baseline when both viewports resize');
+  win.visualViewport.offsetTop=20;win.visualViewport.dispatch('scroll');flushViewport();
+  assert.equal(reserve(),'0px');assert.equal(view.contentEl.style.getPropertyValue('--private-server-mobile-height'),'420px');
+  assert.equal(view.input.value,'Draft survives navigation');assert.equal(view.pendingImages()[0],pending);
+  win.visualViewport.scale=2;win.visualViewport.dispatch('resize');flushViewport();
+  assert.equal(reserve(),'72px','pinch zoom is not treated as keyboard');
+  win.visualViewport.scale=1;win.innerHeight=700;win.visualViewport.height=700;win.visualViewport.offsetTop=0;
+  win.visualViewport.dispatch('resize');flushViewport();assert.equal(reserve(),'72px','keyboard dismissal restores reservation');
+  win.innerWidth=700;win.innerHeight=390;win.visualViewport.height=390;win.dispatch('resize');flushViewport();
+  assert.equal(reserve(),'72px','rotation resets the expanded baseline');
+  win.innerWidth=390;win.innerHeight=700;win.visualViewport.height=700;win.dispatch('resize');flushViewport();
+  const savedViewport=win.visualViewport;win.visualViewport=null;win.dispatch('resize');flushViewport();
+  assert.equal(reserve(),'72px','without VisualViewport retain safe closed-keyboard fallback');win.visualViewport=savedViewport;
   const stored=data.get(first);
   assert.equal(mobile.menu.attrs['aria-expanded'],'false');assert(mobile.drawer.inert);
   mobile.menu.onclick();assert.equal(mobile.menu.attrs['aria-expanded'],'true');assert(!mobile.backdrop.hidden);assert(mobile.main.inert);
@@ -122,6 +146,7 @@ const find=(el,test)=>test(el)?el:el.children.map(x=>find(x,test)).find(Boolean)
   assert(globalListenerCount()>0);
   await view.onClose();assert.equal(globalListenerCount(),0);assert.equal(frames.size,0);assert.equal(view.previewUrls.length,0);
   assert(!view.contentEl.classes.has('private-server-mobile'));
+  assert.equal(reserve(),'','viewport reservation cleaned up');
   for(const set of listeners.values())assert.equal(set.size,0);
-  console.log('PASS: M5 mobile/desktop DOM branches, drawer menu/backdrop/Escape/close, focus loop/restoration, inert background, draft/pending retention, selection and creation dismissal, compact controls, removal, text/file refresh, read-only safety, and listener/frame cleanup. No visual geometry or iPhone keyboard claims.');
+  console.log('PASS: M5 mobile/desktop DOM branches, drawer menu/backdrop/Escape/close, focus loop/restoration, inert background, draft/pending retention, selection and creation dismissal, compact controls, removal, text/file refresh, read-only safety, conditional toolbar reservation, and listener/frame cleanup. No visual geometry or iPhone keyboard claims.');
 })().catch(error=>{console.error(error);process.exitCode=1;});
