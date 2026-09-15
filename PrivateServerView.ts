@@ -1,7 +1,8 @@
-import { Component, ItemView, Notice, Platform, TFile, TFolder, WorkspaceLeaf } from "obsidian";
+import { Component, ItemView, Modal, Notice, Platform, TFile, TFolder, WorkspaceLeaf } from "obsidian";
 import { Category, discoverCategories, isChannelFile, isChannelPath, remapPath, SessionState } from "./channels";
 import { CreateChannelModal } from "./CreateChannelModal";
-import { parseChannel, sendMessage } from "./messages";
+import { parseChannel } from "./messages";
+import { MAX_PENDING_IMAGES, PendingImage, prepareImage, sendWithImages } from "./attachments";
 
 export const PRIVATE_SERVER_VIEW = "private-server-view";
 
@@ -13,6 +14,12 @@ export class PrivateServerView extends ItemView {
   private composer!: HTMLFormElement;
   private input!: HTMLTextAreaElement;
   private sendButton!: HTMLButtonElement;
+  private imageButton!: HTMLButtonElement;
+  private imagePicker!: HTMLInputElement;
+  private previews!: HTMLElement;
+  private previewUrls: string[] = [];
+  private addingImages = false;
+  private pickerChannel: TFile | null = null;
   private eventScope: Component | null = null;
   private refreshQueued = false;
   private selectedFile: TFile | null = null;
@@ -35,11 +42,34 @@ export class PrivateServerView extends ItemView {
     this.heading = main.createEl("h2", { cls: "private-server-channel-header" });
     this.feed = main.createDiv({ cls: "private-server-feed", attr: { role: "log", "aria-label": "Messages", tabindex: "0" } });
     this.composer = main.createEl("form", { cls: "private-server-composer" });
+    this.previews = this.composer.createDiv({ cls: "private-server-pending-images", attr: { "aria-label": "Pending images" } });
+    this.imagePicker = this.composer.createEl("input", { cls: "private-server-image-picker", attr: {
+      type: "file", accept: "image/png,image/jpeg,image/gif,image/webp", multiple: "true", tabindex: "-1", "aria-label": "Choose images",
+    } });
+    this.imagePicker.hidden = true;
+    this.imagePicker.onchange = () => {
+      const files = Array.from(this.imagePicker.files ?? []);
+      this.imagePicker.value = "";
+      void this.addImages(files, this.pickerChannel);
+    };
     this.input = this.composer.createEl("textarea", { attr: { rows: "3", "aria-label": "Message" } });
     const actions = this.composer.createDiv("private-server-composer-actions");
-    actions.createSpan({ cls: "private-server-hint", text: Platform.isMobile ? "Text messages" : "Enter to send · Shift+Enter for a newline" });
+    this.imageButton = actions.createEl("button", { text: "Add images", attr: { type: "button" } });
+    this.imageButton.onclick = () => {
+      this.pickerChannel = this.selectedFile;
+      this.imagePicker.click();
+    };
+    actions.createSpan({ cls: "private-server-hint", text: Platform.isMobile ? "PNG · JPEG · GIF · WebP" : "Enter to send · Shift+Enter for a newline" });
     this.sendButton = actions.createEl("button", { text: "Send", attr: { type: "submit" } });
     this.composer.onsubmit = event => { event.preventDefault(); void this.send(); };
+    this.input.onpaste = event => {
+      const files = Array.from(event.clipboardData?.items ?? [])
+        .filter(item => item.kind === "file").map(item => item.getAsFile()).filter((file): file is File => file !== null);
+      if (files.length) {
+        event.preventDefault();
+        void this.addImages(files, this.selectedFile);
+      }
+    };
     this.input.oninput = () => {
       if (this.selectedFile) this.session.drafts.set(this.selectedFile.path, this.input.value);
       this.updateComposer();
@@ -53,12 +83,16 @@ export class PrivateServerView extends ItemView {
     const scope = this.addChild(new Component());
     this.eventScope = scope;
     const { vault } = this.app;
-    scope.registerEvent(vault.on("create", file => { if (isChannelPath(file.path)) this.queueRefresh(); }));
+    scope.registerEvent(vault.on("create", file => {
+      if (isChannelPath(file.path)) this.queueRefresh();
+      else if (file.path.startsWith("Attachments/") && this.selectedFile) void this.loadFeed(false);
+    }));
     scope.registerEvent(vault.on("delete", file => { if (isChannelPath(file.path)) this.queueRefresh(); }));
     scope.registerEvent(vault.on("rename", (file, oldPath) => {
       if (!(isChannelPath(file.path) || isChannelPath(oldPath))) return;
       if (this.session.selectedPath) this.session.selectedPath = remapPath(this.session.selectedPath, oldPath, file.path);
       this.session.collapsedPaths = new Set([...this.session.collapsedPaths].map(path => remapPath(path, oldPath, file.path)));
+      this.session.pendingImages = new Map([...this.session.pendingImages].map(([path, images]) => [remapPath(path, oldPath, file.path), images]));
       this.session.drafts = new Map([...this.session.drafts].map(([path, text]) => [remapPath(path, oldPath, file.path), text]));
       this.queueRefresh();
     }));
@@ -73,6 +107,7 @@ export class PrivateServerView extends ItemView {
     if (this.eventScope) this.removeChild(this.eventScope);
     this.eventScope = null;
     this.readVersion++;
+    this.clearPreviewUrls();
     this.selectedFile = null;
     this.contentEl.empty();
     this.contentEl.removeClass("private-server-view");
@@ -153,13 +188,15 @@ export class PrivateServerView extends ItemView {
     this.heading.setText(selected ? `# ${selected.basename}` : "No channel selected");
     this.input.placeholder = selected ? `Message #${selected.basename}` : "Select a channel";
     if (changed) this.input.value = selected ? this.session.drafts.get(selected.path) ?? "" : "";
+    this.renderPreviews();
     void this.loadFeed(changed);
   }
 
   private updateComposer(): void {
     this.composer.hidden = !this.selectedFile;
     this.input.disabled = !this.writable || this.sending;
-    this.sendButton.disabled = !this.writable || this.sending || !this.input.value.trim();
+    this.imageButton.disabled = !this.writable || this.sending || this.addingImages;
+    this.sendButton.disabled = !this.writable || this.sending || this.addingImages || (!this.input.value.trim() && !this.pendingImages().length);
     this.sendButton.setText(this.sending ? "Sending…" : "Send");
   }
 
@@ -197,7 +234,30 @@ export class PrivateServerView extends ItemView {
             text: new Date(message.timestamp).toLocaleString(undefined, { dateStyle: "medium", timeStyle: "short" }),
             attr: { datetime: message.timestamp, title: message.timestamp },
           });
-          article.createDiv({ cls: "private-server-message-body", text: message.body });
+          for (const part of message.parts) {
+            if (part.type === "text") {
+              if (part.text.trim()) article.createDiv({ cls: "private-server-message-body", text: part.text });
+              continue;
+            }
+            const attachment = this.app.vault.getAbstractFileByPath(part.path);
+            if (!(attachment instanceof TFile)) {
+              article.createEl("p", { cls: "private-server-hint", text: `Image unavailable: ${part.path}` });
+              continue;
+            }
+            const url = this.app.vault.getResourcePath(attachment);
+            const open = article.createEl("button", { cls: "private-server-feed-image", attr: { type: "button", "aria-label": `Open ${attachment.name}` } });
+            const image = open.createEl("img", { attr: { src: url, alt: attachment.name, loading: "lazy" } });
+            image.onload = () => {
+              if (this.eventScope && version === this.readVersion && (scrollToEnd || wasAtBottom)) this.feed.scrollTop = this.feed.scrollHeight;
+            };
+            image.onerror = () => { image.alt = `Image unavailable: ${attachment.name}`; };
+            open.onclick = () => {
+              const modal = new Modal(this.app);
+              modal.contentEl.addClass("private-server-image-modal");
+              modal.contentEl.createEl("img", { attr: { src: url, alt: attachment.name } });
+              modal.open();
+            };
+          }
         }
       }
       this.feed.scrollTop = scrollToEnd || wasAtBottom ? this.feed.scrollHeight : previousScroll;
@@ -211,24 +271,79 @@ export class PrivateServerView extends ItemView {
     }
   }
 
+  private pendingImages(): PendingImage[] {
+    return this.selectedFile ? this.session.pendingImages.get(this.selectedFile.path) ?? [] : [];
+  }
+
+  private clearPreviewUrls(): void {
+    for (const url of this.previewUrls) URL.revokeObjectURL(url);
+    this.previewUrls = [];
+  }
+
+  private renderPreviews(): void {
+    this.clearPreviewUrls();
+    this.previews.empty();
+    for (const image of this.pendingImages()) {
+      const url = URL.createObjectURL(image.blob);
+      this.previewUrls.push(url);
+      const item = this.previews.createDiv("private-server-pending-image");
+      item.createEl("img", { attr: { src: url, alt: image.name } });
+      const remove = item.createEl("button", { text: "Remove", attr: { type: "button", "aria-label": `Remove ${image.name}` } });
+      remove.disabled = this.sending;
+      remove.onclick = () => {
+        if (!this.selectedFile || this.sending) return;
+        this.session.pendingImages.set(this.selectedFile.path, this.pendingImages().filter(entry => entry.id !== image.id));
+        this.renderPreviews(); this.updateComposer();
+      };
+    }
+  }
+
+  private async addImages(files: File[], channel: TFile | null): Promise<void> {
+    if (!channel || this.sending || this.addingImages || !this.writable) return;
+    this.addingImages = true; this.updateComposer();
+    try {
+      for (const file of files) {
+        if ((this.session.pendingImages.get(channel.path) ?? []).length >= MAX_PENDING_IMAGES) {
+          new Notice("Attach up to 10 images per message."); break;
+        }
+        try {
+          const image = await prepareImage(file);
+          if (!isChannelFile(channel) || this.app.vault.getAbstractFileByPath(channel.path) !== channel) {
+            new Notice("The channel no longer exists. Choose a channel and add the images again."); break;
+          }
+          this.session.pendingImages.set(channel.path, [...this.session.pendingImages.get(channel.path) ?? [], image]);
+        } catch (cause) { new Notice(cause instanceof Error ? cause.message : "Could not add image."); }
+      }
+    } finally {
+      this.addingImages = false;
+      if (this.eventScope) { this.renderPreviews(); this.updateComposer(); }
+    }
+  }
+
   private async send(): Promise<void> {
     const file = this.selectedFile;
     const body = this.input.value;
-    if (!file || !this.writable || this.sending || !body.trim()) return;
+    const images = [...this.pendingImages()];
+    if (!file || !this.writable || this.sending || this.addingImages || (!body.trim() && !images.length)) return;
     this.session.drafts.set(file.path, body);
-    this.sending = true; this.updateComposer();
+    this.sending = true; this.updateComposer(); this.renderPreviews();
     try {
-      await sendMessage(this.app.vault, file, body);
+      await sendWithImages(this.app.vault, file, body, images);
+      const sentIds = new Set(images.map(image => image.id));
+      const remaining = (this.session.pendingImages.get(file.path) ?? []).filter(image => !sentIds.has(image.id));
+      if (remaining.length) this.session.pendingImages.set(file.path, remaining);
+      else this.session.pendingImages.delete(file.path);
       if (this.session.drafts.get(file.path) === body) this.session.drafts.delete(file.path);
       if (this.eventScope && this.selectedFile === file) {
         this.input.value = "";
+        this.renderPreviews();
         await this.loadFeed(true);
       }
     } catch (cause) {
       new Notice(`Message not sent. Your draft is preserved. ${cause instanceof Error ? cause.message : "Please try again."}`);
     } finally {
       this.sending = false;
-      if (this.eventScope) { this.updateComposer(); if (this.selectedFile === file && this.writable) this.input.focus(); }
+      if (this.eventScope) { this.renderPreviews(); this.updateComposer(); if (this.selectedFile === file && this.writable) this.input.focus(); }
     }
   }
 }

@@ -1,3 +1,4 @@
+import type { PendingImage } from "./attachments";
 import { TFile, TFolder, Vault } from "obsidian";
 
 export const CHANNELS_ROOT = "Channels";
@@ -8,6 +9,7 @@ export interface SessionState {
   selectedPath: string | null;
   collapsedPaths: Set<string>;
   drafts: Map<string, string>;
+  pendingImages: Map<string, PendingImage[]>;
 }
 export function isChannelPath(path: string): boolean {
   return path === CHANNELS_ROOT || path.startsWith(`${CHANNELS_ROOT}/`);

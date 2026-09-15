@@ -8,6 +8,7 @@ export default class PrivateServerPlugin extends Plugin {
     selectedPath: null,
     collapsedPaths: new Set(),
     drafts: new Map(),
+    pendingImages: new Map(),
   };
 
   onload(): void {

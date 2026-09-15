@@ -2,7 +2,25 @@ import { parseYaml, TFile, TFolder, Vault } from "obsidian";
 import { isChannelFile, isChannelPath } from "./channels";
 
 export const CHANNEL_TEMPLATE = "---\nprivate-server-channel: true\nprivate-server-format: 1\n---\n";
-export interface Message { timestamp: string; body: string; }
+export type MessagePart = { type: "text"; text: string } | { type: "image"; path: string };
+export interface Message { timestamp: string; body: string; parts: MessagePart[]; }
+
+export function parseMessageParts(body: string): MessagePart[] {
+  const parts: MessagePart[] = [];
+  // Only local images in the attachment root; never remote URLs or path traversal.
+  const embed = /!\[\[(Attachments\/[^\]\[\r\n|]+\.(?:png|jpe?g|gif|webp))\]\]/gi;
+  let end = 0;
+  for (const match of body.matchAll(embed)) {
+    const path = match[1]!;
+    if (path.split("/").some(segment => !segment || segment === "." || segment === "..") || path.includes("\\")) continue;
+    const index = match.index!;
+    if (index > end) parts.push({ type: "text", text: body.slice(end, index) });
+    parts.push({ type: "image", path });
+    end = index + match[0].length;
+  }
+  if (end < body.length) parts.push({ type: "text", text: body.slice(end) });
+  return parts;
+}
 export interface ChannelDocument { writable: boolean; messages: Message[]; reason?: string; }
 const timestampPattern = /^## (\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z)$/;
 
@@ -35,7 +53,7 @@ export function parseChannel(source: string): ChannelDocument {
       index++;
     }
     if (!body.length || !body.join("\n").trim()) return reject("Read-only: a message has an invalid body.");
-    messages.push({ timestamp, body: body.join("\n") });
+    messages.push({ timestamp, body: body.join("\n"), parts: parseMessageParts(body.join("\n")) });
   }
   return { writable: true, messages };
 }

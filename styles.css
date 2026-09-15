@@ -141,3 +141,16 @@
   .private-server-view .private-server-channel-header { padding: 12px 16px; font-size: 17px; }
   .private-server-view .private-server-composer { padding: 8px 12px; }
 }
+
+/* Image additions only: pending files stay in memory until sending. */
+.private-server-view .private-server-image-picker[hidden] { display: none; }
+.private-server-view .private-server-pending-images { display: flex; gap: 10px; overflow-x: auto; max-height: 140px; }
+.private-server-view .private-server-pending-images:empty { display: none; }
+.private-server-view .private-server-pending-image { flex: 0 0 96px; padding-bottom: 8px; }
+.private-server-view .private-server-pending-image img { width: 96px; height: 72px; object-fit: contain; border-radius: 6px; display: block; }
+.private-server-view .private-server-pending-image button { margin-top: 4px; min-height: 36px; width: 100%; }
+.private-server-view .private-server-feed-image { display: block; width: fit-content; max-width: 100%; height: auto; background: transparent; border: 0; box-shadow: none; padding: 0; margin: 8px 0; }
+.private-server-view .private-server-feed-image img { display: block; max-width: 100%; width: auto; height: auto; max-height: 480px; object-fit: contain; border-radius: 8px; }
+.private-server-view .private-server-composer-actions { flex-wrap: wrap; }
+.private-server-view .private-server-composer-actions button { flex-shrink: 0; }
+.private-server-image-modal img { display: block; max-width: 100%; max-height: 75vh; height: auto; margin: auto; object-fit: contain; }
