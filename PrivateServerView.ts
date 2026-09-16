@@ -1,14 +1,21 @@
 import { Component, ItemView, Modal, Notice, Platform, TFile, TFolder, WorkspaceLeaf } from "obsidian";
 import { Category, discoverCategories, isChannelFile, isChannelPath, remapPath, SessionState } from "./channels";
 import { CreateChannelModal } from "./CreateChannelModal";
-import { parseChannel } from "./messages";
+import { Message, messagePreview, mutateMessage, parseChannel } from "./messages";
 import { MAX_PENDING_IMAGES, PendingImage, prepareImage, sendWithImages } from "./attachments";
 
+import { bindMessageActions, DeleteMessage, EditMessage, MessageActions } from "./MessageActions";
 import { MobileLayout } from "./MobileLayout";
 
 export const PRIVATE_SERVER_VIEW = "private-server-view";
 
 export class PrivateServerView extends ItemView {
+  private replyBanner!: HTMLElement;
+  private messages: Message[] = [];
+  private messageElements = new Map<string, HTMLElement>();
+  private interactionCleanup: (() => void)[] = [];
+  private highlightTimer: ReturnType<typeof setTimeout> | undefined;
+  private jumping = false;
   private mobileLayout: MobileLayout | null = null;
   private categories: Category[] = [];
   private sidebar!: HTMLElement;
@@ -47,6 +54,7 @@ export class PrivateServerView extends ItemView {
     this.heading = header.createEl("h2", { cls: "private-server-channel-header" });
     this.feed = main.createDiv({ cls: "private-server-feed", attr: { role: "log", "aria-label": "Messages", tabindex: "0" } });
     this.composer = main.createEl("form", { cls: "private-server-composer" });
+    this.replyBanner = this.composer.createDiv("private-server-reply-banner");
     this.previews = this.composer.createDiv({ cls: "private-server-pending-images", attr: { "aria-label": "Pending images" } });
     this.imagePicker = this.composer.createEl("input", { cls: "private-server-image-picker", attr: {
       type: "file", accept: "image/png,image/jpeg,image/gif,image/webp", multiple: "true", tabindex: "-1", "aria-label": "Choose images",
@@ -100,6 +108,7 @@ export class PrivateServerView extends ItemView {
       if (this.session.selectedPath) this.session.selectedPath = remapPath(this.session.selectedPath, oldPath, file.path);
       this.session.collapsedPaths = new Set([...this.session.collapsedPaths].map(path => remapPath(path, oldPath, file.path)));
       this.session.pendingImages = new Map([...this.session.pendingImages].map(([path, images]) => [remapPath(path, oldPath, file.path), images]));
+      this.session.replies = new Map([...this.session.replies].map(([path, id]) => [remapPath(path, oldPath, file.path), id]));
       this.session.drafts = new Map([...this.session.drafts].map(([path, text]) => [remapPath(path, oldPath, file.path), text]));
       this.queueRefresh();
     }));
@@ -116,6 +125,7 @@ export class PrivateServerView extends ItemView {
     if (this.eventScope) this.removeChild(this.eventScope);
     this.eventScope = null;
     this.readVersion++;
+    this.clearInteractions();
     this.clearPreviewUrls();
     this.selectedFile = null;
     this.contentEl.empty();
@@ -202,6 +212,7 @@ export class PrivateServerView extends ItemView {
   }
 
   private updateComposer(): void {
+    this.renderReplyBanner();
     this.composer.hidden = !this.selectedFile;
     this.input.disabled = !this.writable || this.sending;
     this.imageButton.disabled = !this.writable || this.sending || this.addingImages;
@@ -213,6 +224,8 @@ export class PrivateServerView extends ItemView {
   private async loadFeed(scrollToEnd: boolean): Promise<void> {
     const file = this.selectedFile;
     const version = ++this.readVersion;
+    this.clearInteractions();
+    this.messages = [];
     this.writable = false;
     this.updateComposer();
     if (!file) {
@@ -228,15 +241,28 @@ export class PrivateServerView extends ItemView {
       if (!this.eventScope || version !== this.readVersion || file !== this.selectedFile) return;
       const document = parseChannel(source);
       this.writable = document.writable;
+      this.messages = document.messages;
       this.feed.empty();
       if (!document.writable) {
         this.feed.createEl("p", { cls: "private-server-empty", text: document.reason });
-        this.feed.createEl("pre", { cls: "private-server-message-body", text: source.replace(/^---\r?\n[\s\S]*?\r?\n---(?:\r?\n|$)/, "") });
+        this.feed.createEl("pre", { cls: "private-server-message-body", text: source.replace(/<!--\s*private-server-[\s\S]*?(?:-->|$)/g, "").replace(/^---\r?\n[\s\S]*?\r?\n---(?:\r?\n|$)/, "") });
       } else if (!document.messages.length) {
         this.feed.createEl("p", { cls: "private-server-empty", text: `No messages yet.\nStart the conversation in #${file.basename}.` });
       } else {
         for (const message of document.messages) {
           const article = this.feed.createEl("article", { cls: "private-server-message" });
+          if (message.id) this.messageElements.set(message.id, article);
+          const actions = () => new MessageActions(this.app,
+            () => this.reply(file, message),
+            () => new EditMessage(this.app, message, async text => {
+              await mutateMessage(this.app.vault, file, message, "edit", text);
+              if (this.selectedFile === file && this.eventScope) await this.loadFeed(false);
+            }).open(),
+            () => new DeleteMessage(this.app, async () => {
+              await mutateMessage(this.app.vault, file, message, "delete");
+              if (this.selectedFile === file && this.eventScope) await this.loadFeed(false);
+            }).open()).open();
+          this.interactionCleanup.push(bindMessageActions(article, Platform.isMobile, actions));
           const meta = article.createDiv("private-server-message-meta");
           meta.createSpan({ cls: "private-server-author", text: "Kyle" });
           meta.createEl("time", {
@@ -244,6 +270,14 @@ export class PrivateServerView extends ItemView {
             text: new Date(message.timestamp).toLocaleString(undefined, { dateStyle: "medium", timeStyle: "short" }),
             attr: { datetime: message.timestamp, title: message.timestamp },
           });
+          meta.createEl("button", { text: "…", cls: "private-server-message-actions", attr: { type: "button", "aria-label": "Message actions" } }).onclick = actions;
+          if (message.replyToId) {
+            const target = message.replyToId !== message.id ? document.messages.find(m => m.id === message.replyToId) : undefined;
+            const reference = article.createEl("button", { cls: "private-server-reply-reference", text: target ? `↪ Kyle · ${messagePreview(target)}` : "Original message deleted or unavailable",
+              attr: { type: "button", "aria-label": target ? `Jump to original: ${messagePreview(target)}` : "Original message deleted or unavailable" } });
+            reference.disabled = !target;
+            reference.onclick = () => this.jumpToMessage(message.replyToId!);
+          }
           for (const part of message.parts) {
             if (part.type === "text") {
               if (part.text.trim()) article.createDiv({ cls: "private-server-message-body", text: part.text });
@@ -258,7 +292,7 @@ export class PrivateServerView extends ItemView {
             const open = article.createEl("button", { cls: "private-server-feed-image", attr: { type: "button", "aria-label": `Open ${attachment.name}` } });
             const image = open.createEl("img", { attr: { src: url, alt: attachment.name, loading: "lazy" } });
             image.onload = () => {
-              if (this.eventScope && version === this.readVersion && (scrollToEnd || wasAtBottom)) this.feed.scrollTop = this.feed.scrollHeight;
+              if (this.eventScope && version === this.readVersion && !this.jumping && (scrollToEnd || wasAtBottom)) this.feed.scrollTop = this.feed.scrollHeight;
             };
             image.onerror = () => { image.alt = `Image unavailable: ${attachment.name}`; };
             open.onclick = () => {
@@ -279,6 +313,47 @@ export class PrivateServerView extends ItemView {
     } finally {
       if (this.eventScope && version === this.readVersion) this.updateComposer();
     }
+  }
+
+  private clearInteractions(): void {
+    this.interactionCleanup.forEach(cleanup => cleanup()); this.interactionCleanup = [];
+    if (this.highlightTimer !== undefined) clearTimeout(this.highlightTimer);
+    this.highlightTimer = undefined; this.jumping = false; this.messageElements.clear();
+  }
+
+  private async reply(file: TFile, message: Message): Promise<void> {
+    const id = await mutateMessage(this.app.vault, file, message, "identify");
+    this.session.replies.set(file.path, id);
+    if (this.eventScope && this.selectedFile === file) {
+      await this.loadFeed(false); this.updateComposer();
+    }
+  }
+
+  private renderReplyBanner(): void {
+    this.replyBanner.empty();
+    const file = this.selectedFile;
+    const id = file ? this.session.replies.get(file.path) : undefined;
+    this.replyBanner.hidden = !id;
+    if (!id || !file) return;
+    const target = this.messages.find(m => m.id === id);
+    this.replyBanner.createSpan({ text: `Replying to Kyle · ${target ? messagePreview(target) : "Original message unavailable"}` });
+    const cancel = this.replyBanner.createEl("button", { text: "×", attr: { type: "button", "aria-label": "Cancel reply" } });
+    cancel.disabled = this.sending;
+    cancel.onclick = () => { this.session.replies.delete(file.path); this.updateComposer(); };
+  }
+
+  private jumpToMessage(id: string): void {
+    const target = this.messageElements.get(id);
+    if (!target) { new Notice("Original message unavailable."); return; }
+    this.jumping = true;
+    // Scroll only our feed, never scrollIntoView (which can move Obsidian ancestors).
+    const top = target.getBoundingClientRect().top - this.feed.getBoundingClientRect().top + this.feed.scrollTop;
+    const reduced = this.contentEl.ownerDocument.defaultView?.matchMedia?.("(prefers-reduced-motion: reduce)").matches;
+    this.feed.scrollTo({ top: Math.max(0, top - 12), behavior: reduced ? "auto" : "smooth" });
+    for (const element of this.messageElements.values()) element.removeClass("private-server-message-highlight");
+    target.addClass("private-server-message-highlight");
+    if (this.highlightTimer !== undefined) clearTimeout(this.highlightTimer);
+    this.highlightTimer = setTimeout(() => { target.removeClass("private-server-message-highlight"); this.highlightTimer = undefined; }, 1600);
   }
 
   private pendingImages(): PendingImage[] {
@@ -334,11 +409,13 @@ export class PrivateServerView extends ItemView {
     const file = this.selectedFile;
     const body = this.input.value;
     const images = [...this.pendingImages()];
+    const replyToId = file ? this.session.replies.get(file.path) : undefined;
     if (!file || !this.writable || this.sending || this.addingImages || (!body.trim() && !images.length)) return;
     this.session.drafts.set(file.path, body);
     this.sending = true; this.updateComposer(); this.renderPreviews();
     try {
-      await sendWithImages(this.app.vault, file, body, images);
+      await sendWithImages(this.app.vault, file, body, images, replyToId);
+      if (this.session.replies.get(file.path) === replyToId) this.session.replies.delete(file.path);
       const sentIds = new Set(images.map(image => image.id));
       const remaining = (this.session.pendingImages.get(file.path) ?? []).filter(image => !sentIds.has(image.id));
       if (remaining.length) this.session.pendingImages.set(file.path, remaining);

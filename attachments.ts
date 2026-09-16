@@ -28,8 +28,8 @@ export async function prepareImage(file: File): Promise<PendingImage> {
   return { id: randomId(), name: file.name || `Image.${extension}`, extension, blob: file.slice(0, file.size, `image/${extension}`) };
 }
 
-export async function sendWithImages(vault: Vault, channel: TFile, text: string, images: readonly PendingImage[]): Promise<void> {
-  if (!images.length) return sendMessage(vault, channel, text);
+export async function sendWithImages(vault: Vault, channel: TFile, text: string, images: readonly PendingImage[], replyToId?: string): Promise<void> {
+  if (!images.length) return sendMessage(vault, channel, text, replyToId);
   if (images.length > MAX_PENDING_IMAGES) throw new Error("Attach up to 10 images per message.");
   if (!isChannelFile(channel) || vault.getAbstractFileByPath(channel.path) !== channel) throw new Error("This channel no longer exists.");
   const parsed = parseChannel(await vault.read(channel));
@@ -59,7 +59,7 @@ export async function sendWithImages(vault: Vault, channel: TFile, text: string,
     }
     const embeds = created.map(({ path }) => `![[${path}]]`).join("\n");
     body = text.trim() ? `${text}\n\n${embeds}` : embeds;
-    await sendMessage(vault, channel, body);
+    await sendMessage(vault, channel, body, replyToId);
   } catch (cause) {
     if (!created.length) throw cause;
     // A storage adapter may report failure after committing. Confirm before deleting images.

@@ -2,6 +2,7 @@ const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const vm = require('node:vm');
 const esbuild = require('esbuild');
+const { webcrypto } = require('node:crypto');
 class Element {
   constructor(opts = {}, doc = { activeElement: null }) { this.children=[]; this.attrs=opts.attr||{}; this.text=opts.text||''; this.ownerDocument=doc; this.scrollTop=0; this.scrollHeight=100; this.clientHeight=80; this.value=''; }
   createEl(tag, opts={}) { const el=new Element(opts,this.ownerDocument); el.tag=tag; this.children.push(el); return el; }
@@ -35,7 +36,7 @@ const app={vault,workspace};
 class ItemView extends Component {constructor(leaf){super();this.app=app;this.contentEl=new Element();}}
 class Plugin extends Component {constructor(){super();this.app=app;} registerView(t,f){this.factory=f;} addRibbonIcon(i,l,cb){this.ribbon=cb;} addCommand(c){this.command=c;}}
 const api={TFile,TFolder,Component,Modal,ItemView,Plugin,Platform:{isMobile:false},Notice:class{constructor(text){notices.push(text);}},parseYaml};
-function load(source){const box={module:{exports:{}},queueMicrotask,require:id=>{assert.equal(id,'obsidian');return api;}};vm.runInNewContext(source,box);return box.module.exports;}
+function load(source){const box={module:{exports:{}},queueMicrotask,crypto:webcrypto,require:id=>{assert.equal(id,'obsidian');return api;}};vm.runInNewContext(source,box);return box.module.exports;}
 function moduleAt(path){return load(esbuild.buildSync({entryPoints:[path],bundle:true,platform:'browser',format:'cjs',external:['obsidian'],write:false}).outputFiles[0].text);}
 const store=moduleAt('messages.ts'), hierarchy=moduleAt('channels.ts');
 const tick=async()=>{for(let i=0;i<10;i++)await Promise.resolve();};

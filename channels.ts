@@ -9,6 +9,7 @@ export interface SessionState {
   selectedPath: string | null;
   collapsedPaths: Set<string>;
   drafts: Map<string, string>;
+  replies: Map<string, string>;
   pendingImages: Map<string, PendingImage[]>;
 }
 export function isChannelPath(path: string): boolean {

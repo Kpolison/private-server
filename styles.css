@@ -326,3 +326,18 @@
 @media (prefers-reduced-motion: reduce) {
   .private-server-mobile .private-server-drawer { transition: none; }
 }
+
+/* Message interactions: keep navigation and composer sizing unchanged. */
+.private-server-view .private-server-message-actions { margin-left: auto; min-width: 36px; min-height: 36px; background: transparent; box-shadow: none; }
+.private-server-mobile .private-server-message-actions { min-width: 44px; min-height: 44px; }
+.private-server-view .private-server-reply-reference { display: block; max-width: 100%; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; text-align: left; background: transparent; box-shadow: none; border: 0; color: var(--private-server-muted); font-size: 12px; margin-bottom: 6px; }
+.private-server-view .private-server-reply-banner { display: flex; align-items: center; gap: 6px; color: var(--private-server-muted); font-size: 12px; }
+.private-server-view .private-server-reply-banner[hidden] { display: none; }
+.private-server-view .private-server-reply-banner span { flex: 1; min-width: 0; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+.private-server-view .private-server-reply-banner button { flex: 0 0 40px; min-height: 40px; background: transparent; box-shadow: none; }
+.private-server-view .private-server-message-highlight { background: #e6bf7426; outline: 1px solid #e6bf74; border-radius: 5px; }
+.private-server-actions button, .private-server-edit button { min-height: 44px; margin: 4px; }
+.private-server-edit textarea { width: 100%; min-height: 100px; max-height: 35dvh; font: inherit; resize: vertical; }
+
+.private-server-mobile .private-server-reply-reference { min-height: 44px; }
+.private-server-mobile .private-server-reply-banner button { flex-basis: 44px; min-height: 44px; }
