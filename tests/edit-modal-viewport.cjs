@@ -114,28 +114,26 @@ const legacy=body=>`## ${timestamp}\n\n> ${body}\n\n`;
     assert(edit.headerEl.classes.has('private-server-edit-native-header'));
     assert(footer);assert(find(footer,e=>e.text==='Cancel'));assert(find(footer,e=>e.text==='Save'));
     const height=()=>edit.containerEl.style.getPropertyValue('--private-server-edit-height');
-    const clearance=()=>edit.containerEl.style.getPropertyValue('--private-server-edit-keyboard-clearance');
-    assert.equal(height(),'700px');assert.equal(clearance(),'0px');
-    win.visualViewport.height=650;win.visualViewport.dispatch('resize');assert.equal(clearance(),'0px','small changes are not a keyboard');
-    // Supplied box metrics test the budget arithmetic, not real browser geometry.
-    win.getComputedStyle=element=>({paddingTop:element===edit.containerEl?'8px':element===edit.modalEl?'16px':'0px',paddingBottom:element===edit.containerEl?'8px':element===edit.modalEl?'16px':'0px'});
-
-    win.visualViewport.height=320;win.visualViewport.dispatch('resize');assert.equal(height(),'320px');assert.equal(edit.containerEl.style.getPropertyValue('--private-server-edit-content-max'),'248px');assert.equal(clearance(),'24px');
-    assert.equal(footer.parentElement,wrapper);assert.equal(input.parentElement,wrapper);
-    assert.equal(find(footer,e=>e.text==='Save').disabled,undefined);
+    const absentBudgets=()=>{
+      assert.equal(edit.containerEl.style.getPropertyValue('--private-server-edit-keyboard-clearance'),'');
+      assert.equal(edit.containerEl.style.getPropertyValue('--private-server-edit-content-max'),'');
+    };
+    assert.equal(height(),'700px');absentBudgets();
+    for(const suppliedHeight of [650,320,240,700]){
+      win.visualViewport.height=suppliedHeight;win.visualViewport.dispatch('resize');
+      assert.equal(height(),`${suppliedHeight}px`,'raw visible height, without keyboard subtraction');absentBudgets();
+      assert.equal(footer.parentElement,wrapper);assert.equal(input.parentElement,wrapper);
+    }
     win.visualViewport.offsetTop=24;win.visualViewport.dispatch('scroll');
     assert.equal(edit.containerEl.style.getPropertyValue('--private-server-edit-top'),'24px');
-    win.innerHeight=320;win.dispatch('resize');assert.equal(clearance(),'24px','baseline survives both viewports shrinking');
-    win.visualViewport.scale=2;win.visualViewport.dispatch('resize');assert.equal(clearance(),'0px','zoom is not keyboard');
-    win.visualViewport.scale=1;win.visualViewport.dispatch('resize');assert.equal(clearance(),'24px');
-    win.innerHeight=700;win.visualViewport.height=700;win.visualViewport.dispatch('resize');assert.equal(clearance(),'0px','dismissal removes gap');
-    win.innerWidth=700;win.innerHeight=390;win.visualViewport.height=390;win.dispatch('resize');assert.equal(clearance(),'0px','rotation resets baseline');
-    win.innerWidth=390;win.innerHeight=700;win.visualViewport.height=320;win.dispatch('resize');assert.equal(clearance(),'24px');
+    win.innerHeight=320;win.visualViewport.height=320;win.visualViewport.scale=2;win.dispatch('resize');
+    assert.equal(height(),'320px','no heuristic or scale-dependent budget');absentBudgets();
+    win.visualViewport.scale=1;win.innerHeight=700;
     input.value='Long editable message\n'.repeat(200);assert.equal(input.value.split('\n').length,201);
     input.value='Keyboard edit\nsecond line';
     if(iteration===0){await find(footer,e=>e.text==='Save').onclick();assert.equal(saved,'Keyboard edit\nsecond line');}
     else find(footer,e=>e.text==='Cancel').onclick();
-    assert.equal(count(),0);assert.equal(height(),'');assert.equal(clearance(),'');assert(!edit.modalEl.classes.has('private-server-edit-mobile-modal'));assert(!edit.headerEl.classes.has('private-server-edit-native-header'));assert.equal(edit.containerEl.style.getPropertyValue('--private-server-edit-content-max'),'');
+    assert.equal(count(),0);assert.equal(height(),'');assert(!edit.modalEl.classes.has('private-server-edit-mobile-modal'));assert(!edit.headerEl.classes.has('private-server-edit-native-header'));assert.equal(edit.containerEl.style.getPropertyValue('--private-server-edit-content-max'),'');
     win.visualViewport.height=700;win.visualViewport.offsetTop=0;
   }
   const failed=new actionModule.EditMessage(app,message,async()=>{throw Error('Conflict');});failed.open();
@@ -147,5 +145,22 @@ const legacy=body=>`## ${timestamp}\n\n> ${body}\n\n`;
   assert.equal(fallback.containerEl.style.getPropertyValue('--private-server-edit-height'),'700px');
   win.innerHeight=360;win.dispatch('resize');assert.equal(fallback.containerEl.style.getPropertyValue('--private-server-edit-height'),'360px');
   fallback.close();assert.equal(count(),0);win.visualViewport=viewport;
-  console.log('PASS: Edit prefill/save/cancel/failure, mobile visible-height/offset updates, actual native header/content plus compact owned wrapper structure, conditional 24px clearance, repeated listener cleanup, window fallback, desktop unchanged. No visual/iOS keyboard claims.');
+  const diagnostics=moduleAt('EditModalDiagnostics.ts');assert.equal(diagnostics.EDIT_MODAL_DEBUG,false);
+  const diagnosticDoc={defaultView:win,documentElement:new Element(),body:new Element()};
+  diagnosticDoc.documentElement.clientHeight=700;
+  const container=new Element({},diagnosticDoc),modalEl=new Element({},diagnosticDoc),content=new Element({},diagnosticDoc);
+  const wrapper=new Element({},diagnosticDoc),footer=new Element({},diagnosticDoc);
+  content.querySelector=()=>wrapper;wrapper.querySelector=selector=>selector==='.private-server-edit-footer'?footer:null;
+  win.visualViewport.height=320;win.visualViewport.offsetTop=24;
+  footer.getBoundingClientRect=()=>({top:310,bottom:354,height:44,left:0,width:150});
+  let report=diagnostics.editModalGeometry(container,modalEl,content);
+  assert.equal(report.availableBottom,344);assert.equal(report.footerWithinVisibleViewport,false);assert.equal(report.overflowPixels,10);
+  footer.getBoundingClientRect=()=>({top:280,bottom:324,height:44,left:0,width:150});
+  report=diagnostics.editModalGeometry(container,modalEl,content);assert.equal(report.footerWithinVisibleViewport,true);
+  // Values above test reporting arithmetic only, not WebKit placement.
+  const css=fs.readFileSync('styles.css','utf8').split('/* The outer container alone')[1];
+  assert(css);assert(!/dvh|keyboard-clearance|content-max/.test(css));
+  assert(css.includes('flex: 0 1 160px'));assert(css.includes('max-height: 160px'));
+  assert(!/expandedHeight|keyboardOpen|ResizeObserver/.test(fs.readFileSync('MobileEditModal.ts','utf8')));
+  console.log('PASS: Edit prefill/save/cancel/failure, mobile visible-height/offset updates, actual native header/content plus compact owned wrapper structure, single raw viewport geometry owner, repeated listener cleanup, window fallback, desktop unchanged. No visual/iOS keyboard claims.');
 })().catch(error=>{console.error(error);process.exitCode=1;});
