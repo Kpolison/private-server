@@ -21,7 +21,8 @@ export class EditMessage extends Modal {
   onOpen(): void {
     this.cleanupViewport?.();
     this.contentEl.addClass("private-server-edit");
-    this.contentEl.createEl("h2", { text: "Edit message" });
+    const header = Platform.isMobile ? this.contentEl.createDiv("private-server-edit-header") : this.contentEl;
+    header.createEl("h2", { text: "Edit message" });
     const body = Platform.isMobile ? this.contentEl.createDiv("private-server-edit-body") : this.contentEl;
     const input = body.createEl("textarea", { attr: { rows: "5", "aria-label": "Edit message text" } });
     input.value = messageText(this.message);
