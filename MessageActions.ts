@@ -21,14 +21,14 @@ export class EditMessage extends Modal {
   onOpen(): void {
     this.cleanupViewport?.();
     this.contentEl.addClass("private-server-edit");
-    const header = Platform.isMobile ? this.contentEl.createDiv("private-server-edit-header") : this.contentEl;
-    header.createEl("h2", { text: "Edit message" });
-    const body = Platform.isMobile ? this.contentEl.createDiv("private-server-edit-body") : this.contentEl;
+    const editor = Platform.isMobile ? this.contentEl.createDiv("private-server-mobile-edit") : this.contentEl;
+    editor.createEl("h2", { text: "Edit message" });
+    const body = editor;
     const input = body.createEl("textarea", { attr: { rows: "5", "aria-label": "Edit message text" } });
     input.value = messageText(this.message);
     body.createEl("p", { text: "Existing images will be kept." });
     const error = body.createEl("p", { attr: { role: "alert" } });
-    const actions = Platform.isMobile ? this.contentEl.createDiv("private-server-edit-footer") : this.contentEl;
+    const actions = Platform.isMobile ? editor.createDiv("private-server-edit-footer") : this.contentEl;
     const cancel = actions.createEl("button", { text: "Cancel" });
     cancel.onclick = () => this.close();
     const save = actions.createEl("button", { text: "Save", cls: "mod-cta" });
@@ -38,8 +38,9 @@ export class EditMessage extends Modal {
       catch (cause) { error.setText(cause instanceof Error ? cause.message : "Could not save. Your edit is preserved."); }
       finally { save.disabled = false; cancel.disabled = false; input.disabled = false; }
     };
-    if (Platform.isMobile) this.cleanupViewport = fitMobileEditModal(this.containerEl, this.modalEl);
-    input.focus();
+    if (Platform.isMobile) this.cleanupViewport = fitMobileEditModal(this.containerEl, this.modalEl, this.contentEl, this.titleEl);
+    if (Platform.isMobile) input.focus({ preventScroll: true });
+    else input.focus();
   }
   onClose(): void {
     this.cleanupViewport?.(); this.cleanupViewport = undefined;

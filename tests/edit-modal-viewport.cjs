@@ -15,6 +15,7 @@ const setTimer=fn=>{timers.set(++timerId,fn);return timerId;};
 const clearTimer=id=>timers.delete(id);
 const fireTimers=()=>{for(const [id,fn] of [...timers]){timers.delete(id);fn();}};
 const win=new EventTargetMock();
+win.getComputedStyle=()=>({paddingTop:"0px",paddingBottom:"0px",borderTopWidth:"0px",borderBottomWidth:"0px",marginTop:"0px",marginBottom:"0px"});
 win.innerHeight=700;win.innerWidth=390;
 win.visualViewport=Object.assign(new EventTargetMock(),{offsetTop:0,height:700});
 let frameSequence=0;
@@ -51,7 +52,7 @@ class Component {
 class TFolder { constructor(path,children=[]){this.path=path;this.name=path.split('/').pop();this.children=children;} }
 class TFile { constructor(path,parent){this.path=path;this.name=path.split('/').pop();this.extension=this.name.split('.').pop();this.basename=this.name.slice(0,-this.extension.length-1);this.parent=parent;} }
 const notices=[]; let modal;
-class Modal { constructor(app){this.app=app;this.containerEl=new Element();this.modalEl=this.containerEl.createDiv();this.contentEl=this.modalEl.createDiv();modal=this;} open(){this.onOpen();} close(){this.onClose();} }
+class Modal { constructor(app){this.app=app;this.containerEl=new Element("modal-container");this.bgEl=this.containerEl.createDiv("modal-bg");this.modalEl=this.containerEl.createDiv("modal");this.modalEl.createDiv("modal-header-button");this.headerEl=this.modalEl.createDiv("modal-header");this.titleEl=this.headerEl.createDiv("modal-title");this.contentEl=this.modalEl.createDiv("modal-content");modal=this;} open(){this.onOpen();} close(){this.onClose();} }
 const parseYaml = text => Object.fromEntries(text.split('\n').filter(Boolean).map(line=>{const [key,...parts]=line.split(':');const v=parts.join(':').trim();return [key,v==='true'?true:v==='1'?1:v];}));
 const listeners=new Map(), data=new Map(), files=new Map();
 const root=new TFolder('Channels'); files.set(root.path,root);
@@ -104,23 +105,29 @@ const legacy=body=>`## ${timestamp}\n\n> ${body}\n\n`;
     assert.equal(count(),3);assert(edit.containerEl.classes.has('private-server-edit-viewport'));
     const input=find(edit.contentEl,e=>e.tag==='textarea');assert.equal(input.value,'Existing\nmultiline');
     const footer=find(edit.contentEl,e=>e.classes.has('private-server-edit-footer'));
-    const header=find(edit.contentEl,e=>e.classes.has('private-server-edit-header'));
-    const body=find(edit.contentEl,e=>e.classes.has('private-server-edit-body'));
-    assert(header);assert(body);assert.equal(header.parentElement,edit.contentEl);assert.equal(body.parentElement,edit.contentEl);
-    assert.equal(footer.parentElement,edit.contentEl);assert(!body.contains(header));assert(!body.contains(footer));assert(body.contains(input));
-    assert(find(header,e=>e.text==='Edit message'));assert(find(body,e=>e.text==='Existing images will be kept.'));
+    const wrapper=find(edit.contentEl,e=>e.classes.has('private-server-mobile-edit'));
+    assert(wrapper);assert.equal(wrapper.parentElement,edit.contentEl);
+    assert.equal(edit.contentEl.parentElement,edit.modalEl);assert.equal(edit.titleEl.parentElement,edit.headerEl);
+    assert.equal(input.parentElement,wrapper);assert.equal(footer.parentElement,wrapper);
+    assert(find(wrapper,e=>e.text==='Edit message'));
+    const notice=find(wrapper,e=>e.text==='Existing images will be kept.');assert.equal(notice.parentElement,wrapper);
+    assert(edit.headerEl.classes.has('private-server-edit-native-header'));
     assert(footer);assert(find(footer,e=>e.text==='Cancel'));assert(find(footer,e=>e.text==='Save'));
     const height=()=>edit.containerEl.style.getPropertyValue('--private-server-edit-height');
     assert.equal(height(),'700px');
-    win.visualViewport.height=320;win.visualViewport.dispatch('resize');assert.equal(height(),'320px');
-    assert.equal(footer.parentElement,edit.contentEl);assert(!body.contains(footer));
+    // Supplied box metrics test the budget arithmetic, not real browser geometry.
+    win.getComputedStyle=element=>({paddingTop:element===edit.containerEl?'8px':element===edit.modalEl?'16px':'0px',paddingBottom:element===edit.containerEl?'8px':element===edit.modalEl?'16px':'0px'});
+
+    win.visualViewport.height=320;win.visualViewport.dispatch('resize');assert.equal(height(),'320px');assert.equal(edit.containerEl.style.getPropertyValue('--private-server-edit-content-max'),'272px');
+    assert.equal(footer.parentElement,wrapper);assert.equal(input.parentElement,wrapper);
     assert.equal(find(footer,e=>e.text==='Save').disabled,undefined);
     win.visualViewport.offsetTop=24;win.visualViewport.dispatch('scroll');
     assert.equal(edit.containerEl.style.getPropertyValue('--private-server-edit-top'),'24px');
+    input.value='Long editable message\n'.repeat(200);assert.equal(input.value.split('\n').length,201);
     input.value='Keyboard edit\nsecond line';
     if(iteration===0){await find(footer,e=>e.text==='Save').onclick();assert.equal(saved,'Keyboard edit\nsecond line');}
     else find(footer,e=>e.text==='Cancel').onclick();
-    assert.equal(count(),0);assert.equal(height(),'');assert(!edit.modalEl.classes.has('private-server-edit-mobile-modal'));
+    assert.equal(count(),0);assert.equal(height(),'');assert(!edit.modalEl.classes.has('private-server-edit-mobile-modal'));assert(!edit.headerEl.classes.has('private-server-edit-native-header'));assert.equal(edit.containerEl.style.getPropertyValue('--private-server-edit-content-max'),'');
     win.visualViewport.height=700;win.visualViewport.offsetTop=0;
   }
   const failed=new actionModule.EditMessage(app,message,async()=>{throw Error('Conflict');});failed.open();
@@ -132,5 +139,5 @@ const legacy=body=>`## ${timestamp}\n\n> ${body}\n\n`;
   assert.equal(fallback.containerEl.style.getPropertyValue('--private-server-edit-height'),'700px');
   win.innerHeight=360;win.dispatch('resize');assert.equal(fallback.containerEl.style.getPropertyValue('--private-server-edit-height'),'360px');
   fallback.close();assert.equal(count(),0);win.visualViewport=viewport;
-  console.log('PASS: Edit prefill/save/cancel/failure, mobile visible-height/offset updates, independent header/body/footer structure, repeated listener cleanup, window fallback, desktop unchanged. No visual/iOS keyboard claims.');
+  console.log('PASS: Edit prefill/save/cancel/failure, mobile visible-height/offset updates, actual native header/content plus compact owned wrapper structure, repeated listener cleanup, window fallback, desktop unchanged. No visual/iOS keyboard claims.');
 })().catch(error=>{console.error(error);process.exitCode=1;});

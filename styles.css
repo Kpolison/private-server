@@ -360,46 +360,48 @@
   inset: auto;
   transform: none;
   margin: 0;
-  display: flex;
-  flex-direction: column;
+  padding: 16px;
+  display: block;
   min-height: 0;
-  height: 100%;
+  height: auto;
   max-height: 100%;
   max-width: 100%;
   box-sizing: border-box;
   overflow: hidden;
 }
-.private-server-edit-mobile-modal .private-server-edit {
-  display: flex;
-  flex-direction: column;
-  flex: 1 1 0;
-  height: 0;
+.private-server-edit-native-header { display: none !important; }
+.private-server-edit-mobile-modal > .private-server-edit {
+  display: block;
+  flex: none;
+  height: auto;
   min-height: 0;
   max-height: none;
   margin: 0;
-  overflow: hidden;
+  padding: 0;
+  overflow: visible;
 }
-.private-server-edit-mobile-modal .private-server-edit h2 { flex: 0 0 auto; margin: 0 28px 12px 0; }
-/* Definite modal height propagates through content; only the body yields space. */
-.private-server-edit-mobile-modal .private-server-edit-header { flex: 0 0 auto; }
-.private-server-edit-mobile-modal .private-server-edit-body {
+/* One owned layout, intrinsically compact; only the textarea can shrink. */
+.private-server-edit-mobile-modal .private-server-mobile-edit {
   display: flex;
   flex-direction: column;
-  flex: 1 1 auto;
+  gap: 8px;
   min-height: 0;
-  overflow-y: auto;
-  overscroll-behavior: contain;
-}
-.private-server-edit-mobile-modal .private-server-edit-body textarea {
+  max-height: var(--private-server-edit-content-max, 65dvh);
   box-sizing: border-box;
-  flex: 1 1 0;
+}
+.private-server-mobile-edit > h2 { flex: 0 0 auto; margin: 0; padding-right: 44px; }
+.private-server-edit-mobile-modal .private-server-mobile-edit > textarea {
+  box-sizing: border-box;
+  flex: 0 1 160px;
   min-height: 0;
-  height: 0;
-  max-height: none;
+  height: 160px;
+  max-height: 160px;
   overflow-y: auto;
   resize: none;
   font-size: 16px;
 }
-.private-server-edit-mobile-modal .private-server-edit-body p { flex: 0 0 auto; margin: 8px 0; }
-.private-server-edit-mobile-modal .private-server-edit-body p:empty { display: none; }
-.private-server-edit-mobile-modal .private-server-edit-footer { display: flex; flex: 0 0 auto; justify-content: flex-end; gap: 4px; padding-top: 8px; }
+.private-server-mobile-edit > p { flex: 0 0 auto; margin: 0; }
+.private-server-mobile-edit > p:empty { display: none; }
+.private-server-mobile-edit > p[role="alert"] { max-height: 3em; overflow-y: auto; }
+.private-server-mobile-edit > .private-server-edit-footer { display: flex; flex: 0 0 auto; justify-content: flex-end; gap: 4px; }
+.private-server-mobile-edit > .private-server-edit-footer button { margin: 0; min-height: 44px; }
