@@ -16,10 +16,13 @@ export function fitMobileEditModal(container: HTMLElement, modal: HTMLElement,
   const viewport = win?.visualViewport;
   let debugFrame = 0;
   const update = () => {
-    // One geometry owner: raw visible bounds on Obsidian's outer container.
-    // CSS descendants shrink structurally; no keyboard inference or content budget.
+    // Raw coordinate bounds only. CSS intersects the visual viewport with
+    // layout height minus Obsidian's live --keyboard-height (no heuristics).
     container.style.setProperty("--private-server-edit-top", `${viewport?.offsetTop ?? 0}px`);
-    if (win) container.style.setProperty("--private-server-edit-height", `${viewport?.height ?? win.innerHeight}px`);
+    if (win) {
+      container.style.setProperty("--private-server-edit-height", `${viewport?.height ?? win.innerHeight}px`);
+      container.style.setProperty("--private-server-edit-layout-height", `${Math.max(win.innerHeight, container.ownerDocument.documentElement?.clientHeight ?? 0)}px`);
+    }
     if (EDIT_MODAL_DEBUG && win && !debugFrame) {
       debugFrame = win.requestAnimationFrame(() => {
         debugFrame = 0;
@@ -31,7 +34,13 @@ export function fitMobileEditModal(container: HTMLElement, modal: HTMLElement,
   viewport?.addEventListener("resize", update);
   viewport?.addEventListener("scroll", update);
   win?.addEventListener("resize", update);
+  // The CSS variable responds without JS resize events. Only debug logging
+  // observes root changes, so native keyboard updates are captured as well.
+  const debugObserver = EDIT_MODAL_DEBUG && typeof MutationObserver !== "undefined"
+    ? new MutationObserver(update) : null;
+  if (debugObserver) debugObserver.observe(container.ownerDocument.documentElement, { attributes: true, attributeFilter: ["style", "class"] });
   return () => {
+    debugObserver?.disconnect();
     if (debugFrame) win?.cancelAnimationFrame(debugFrame);
     viewport?.removeEventListener("resize", update);
     viewport?.removeEventListener("scroll", update);
@@ -41,5 +50,6 @@ export function fitMobileEditModal(container: HTMLElement, modal: HTMLElement,
     nativeHeader?.removeClass("private-server-edit-native-header");
     container.style.removeProperty("--private-server-edit-top");
     container.style.removeProperty("--private-server-edit-height");
+    container.style.removeProperty("--private-server-edit-layout-height");
   };
 }

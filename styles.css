@@ -342,17 +342,20 @@
 .private-server-mobile .private-server-reply-reference { min-height: 44px; }
 .private-server-mobile .private-server-reply-banner button { flex-basis: 44px; min-height: 44px; }
 
-/* The outer container alone owns raw viewport geometry. Descendants only
-   participate in normal flex shrinking; safe-area padding is applied here once. */
+/* Intersect visual bounds with Obsidian's keyboard-safe layout bounds.
+   Taking the smaller region avoids subtracting K again when VisualViewport
+   has already contracted. Native CSS-variable updates need no JS resize event. */
 .private-server-edit-viewport.private-server-edit-viewport {
   position: absolute;
   top: var(--private-server-edit-top, 0px);
   bottom: auto;
-  height: var(--private-server-edit-height, 100vh);
+  --private-server-edit-effective-height: max(0px, min(var(--private-server-edit-height, 100vh), calc(var(--private-server-edit-layout-height, 100vh) - var(--keyboard-height, 0px) - var(--private-server-edit-top, 0px))));
+  height: var(--private-server-edit-effective-height);
   max-height: none;
   min-height: 0;
   box-sizing: border-box;
-  padding: max(8px, env(safe-area-inset-top, 0px)) max(8px, env(safe-area-inset-right, 0px)) max(8px, env(safe-area-inset-bottom, 0px)) max(8px, env(safe-area-inset-left, 0px));
+  /* Obsidian may fold K into its safe-bottom variable; retain only the remainder. */
+  padding: max(8px, env(safe-area-inset-top, 0px)) max(8px, env(safe-area-inset-right, 0px)) max(8px, calc(var(--safe-area-inset-bottom, env(safe-area-inset-bottom, 0px)) - var(--keyboard-height, 0px))) max(8px, env(safe-area-inset-left, 0px));
   align-items: center;
   justify-content: center;
 }
