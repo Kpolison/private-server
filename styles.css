@@ -341,3 +341,50 @@
 
 .private-server-mobile .private-server-reply-reference { min-height: 44px; }
 .private-server-mobile .private-server-reply-banner button { flex-basis: 44px; min-height: 44px; }
+
+/* Only the mobile Edit modal follows the keyboard's visible viewport. */
+.private-server-edit-viewport.private-server-edit-viewport {
+  position: fixed;
+  top: var(--private-server-edit-top, 0px);
+  bottom: auto;
+  height: var(--private-server-edit-height, 100vh);
+  height: var(--private-server-edit-height, 100dvh);
+  min-height: 0;
+  box-sizing: border-box;
+  padding: max(8px, env(safe-area-inset-top, 0px)) max(8px, env(safe-area-inset-right, 0px)) max(8px, env(safe-area-inset-bottom, 0px)) max(8px, env(safe-area-inset-left, 0px));
+  align-items: center;
+  justify-content: center;
+}
+.private-server-edit-viewport .private-server-edit-mobile-modal {
+  position: relative;
+  inset: auto;
+  transform: none;
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  max-height: 100%;
+  max-width: 100%;
+  box-sizing: border-box;
+  overflow: hidden;
+}
+.private-server-edit-mobile-modal .private-server-edit {
+  display: flex;
+  flex-direction: column;
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow: hidden;
+}
+.private-server-edit-mobile-modal .private-server-edit h2 { flex: 0 0 auto; margin: 0 28px 12px 0; }
+.private-server-edit-mobile-modal .private-server-edit-body { min-height: 0; overflow-y: auto; overscroll-behavior: contain; }
+.private-server-edit-mobile-modal .private-server-edit-body textarea {
+  box-sizing: border-box;
+  min-height: 44px;
+  height: 180px;
+  max-height: min(180px, calc(var(--private-server-edit-height, 100dvh) * 0.35));
+  resize: none;
+  font-size: 16px;
+}
+.private-server-edit-mobile-modal .private-server-edit-body p { margin: 8px 0; }
+.private-server-edit-mobile-modal .private-server-edit-body p:empty { display: none; }
+.private-server-edit-mobile-modal .private-server-edit-footer { display: flex; flex: 0 0 auto; justify-content: flex-end; gap: 4px; padding-top: 8px; }

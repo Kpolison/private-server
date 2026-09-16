@@ -1,4 +1,5 @@
-import { App, Modal, Notice } from "obsidian";
+import { App, Modal, Notice, Platform } from "obsidian";
+import { fitMobileEditModal } from "./MobileEditModal";
 import { Message, messageText } from "./messages";
 
 export class MessageActions extends Modal {
@@ -15,26 +16,34 @@ export class MessageActions extends Modal {
 }
 
 export class EditMessage extends Modal {
+  private cleanupViewport?: () => void;
   constructor(app: App, private message: Message, private save: (text: string) => Promise<void>) { super(app); }
   onOpen(): void {
+    this.cleanupViewport?.();
     this.contentEl.addClass("private-server-edit");
     this.contentEl.createEl("h2", { text: "Edit message" });
-    const input = this.contentEl.createEl("textarea", { attr: { rows: "5", "aria-label": "Edit message text" } });
+    const body = Platform.isMobile ? this.contentEl.createDiv("private-server-edit-body") : this.contentEl;
+    const input = body.createEl("textarea", { attr: { rows: "5", "aria-label": "Edit message text" } });
     input.value = messageText(this.message);
-    this.contentEl.createEl("p", { text: "Existing images will be kept." });
-    const error = this.contentEl.createEl("p", { attr: { role: "alert" } });
-    const cancel = this.contentEl.createEl("button", { text: "Cancel" });
+    body.createEl("p", { text: "Existing images will be kept." });
+    const error = body.createEl("p", { attr: { role: "alert" } });
+    const actions = Platform.isMobile ? this.contentEl.createDiv("private-server-edit-footer") : this.contentEl;
+    const cancel = actions.createEl("button", { text: "Cancel" });
     cancel.onclick = () => this.close();
-    const save = this.contentEl.createEl("button", { text: "Save", cls: "mod-cta" });
+    const save = actions.createEl("button", { text: "Save", cls: "mod-cta" });
     save.onclick = async () => {
       save.disabled = true; cancel.disabled = true; input.disabled = true;
       try { await this.save(input.value); this.close(); }
       catch (cause) { error.setText(cause instanceof Error ? cause.message : "Could not save. Your edit is preserved."); }
       finally { save.disabled = false; cancel.disabled = false; input.disabled = false; }
     };
+    if (Platform.isMobile) this.cleanupViewport = fitMobileEditModal(this.containerEl, this.modalEl);
     input.focus();
   }
-  onClose(): void { this.contentEl.empty(); }
+  onClose(): void {
+    this.cleanupViewport?.(); this.cleanupViewport = undefined;
+    this.contentEl.empty();
+  }
 }
 
 export class DeleteMessage extends Modal {
