@@ -12,6 +12,8 @@ export function fitMobileEditModal(container: HTMLElement, modal: HTMLElement,
   nativeHeader?.addClass("private-server-edit-native-header");
   const win = container.ownerDocument.defaultView;
   const viewport = win?.visualViewport;
+  let expandedHeight = 0;
+  let viewportWidth = 0;
   const set = (name: string, value: number) => {
     const px = `${Math.max(0, value)}px`;
     if (container.style.getPropertyValue(name) !== px) container.style.setProperty(name, px);
@@ -21,6 +23,16 @@ export function fitMobileEditModal(container: HTMLElement, modal: HTMLElement,
     if (!win) return;
     const height = viewport?.height ?? win.innerHeight;
     set("--private-server-edit-height", height);
+    // Same contraction heuristic as the working composer; focus alone is not a keyboard.
+    if (viewportWidth !== win.innerWidth) { viewportWidth = win.innerWidth; expandedHeight = 0; }
+    expandedHeight = Math.max(expandedHeight, win.innerHeight, height);
+    const keyboardOpen = !!viewport && Math.abs((viewport.scale ?? 1) - 1) < 0.01
+      && expandedHeight - height > Math.max(100, expandedHeight * 0.18);
+    // iOS Obsidian WebView may report a VisualViewport boundary that leaves
+    // controls adjacent to/partly overlapped by the software keyboard. This is
+    // a 24px spacing allowance (six 4px units), NOT an estimate of keyboard height.
+    const clearance = keyboardOpen ? 24 : 0;
+    set("--private-server-edit-keyboard-clearance", clearance);
     // Subtract measured box chrome, not a guessed keyboard/header allowance.
     // This is a MAXIMUM for the compact wrapper, never a target editor height.
     const chrome = (element: HTMLElement, margins = false) => {
@@ -29,7 +41,7 @@ export function fitMobileEditModal(container: HTMLElement, modal: HTMLElement,
         ...(margins ? ["marginTop", "marginBottom"] : [])] as (keyof CSSStyleDeclaration)[];
       return properties.reduce<number>((sum, key) => sum + (parseFloat(String(style[key])) || 0), 0);
     };
-    set("--private-server-edit-content-max", height - chrome(container) - chrome(modal, true) - chrome(content, true));
+    set("--private-server-edit-content-max", height - clearance - chrome(container) - chrome(modal, true) - chrome(content, true));
   };
   update();
   viewport?.addEventListener("resize", update);
@@ -45,6 +57,6 @@ export function fitMobileEditModal(container: HTMLElement, modal: HTMLElement,
     container.removeClass("private-server-edit-viewport");
     modal.removeClass("private-server-edit-mobile-modal");
     nativeHeader?.removeClass("private-server-edit-native-header");
-    for (const name of ["--private-server-edit-top", "--private-server-edit-height", "--private-server-edit-content-max"]) container.style.removeProperty(name);
+    for (const name of ["--private-server-edit-top", "--private-server-edit-height", "--private-server-edit-content-max", "--private-server-edit-keyboard-clearance"]) container.style.removeProperty(name);
   };
 }

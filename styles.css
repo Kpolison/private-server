@@ -347,8 +347,8 @@
   position: fixed;
   top: var(--private-server-edit-top, 0px);
   bottom: auto;
-  height: var(--private-server-edit-height, 100vh);
-  height: var(--private-server-edit-height, 100dvh);
+  height: calc(var(--private-server-edit-height, 100vh) - var(--private-server-edit-keyboard-clearance, 0px));
+  height: calc(var(--private-server-edit-height, 100dvh) - var(--private-server-edit-keyboard-clearance, 0px));
   min-height: 0;
   box-sizing: border-box;
   padding: max(8px, env(safe-area-inset-top, 0px)) max(8px, env(safe-area-inset-right, 0px)) max(8px, env(safe-area-inset-bottom, 0px)) max(8px, env(safe-area-inset-left, 0px));
